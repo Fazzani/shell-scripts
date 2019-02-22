@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 # ##################################################
-# My Generic BASH script template
+# Aws build application script
 #
 version="1.0.0"               # Sets version variable
 #
@@ -120,6 +120,8 @@ gemDependencies=()
 function mainScript() {
 ############## Begin Script Here ###################
 ####################################################
+debug $buildversion
+debug $configuration
 
 echo -n
 
@@ -134,19 +136,27 @@ echo -n
 usage() {
   echo -n "${scriptName} [OPTION]... [FILE]...
 
-This is a script template.  Edit this description to print help to users.
+This is build script allow the CICD for .net core application on AWS platform.
 
  ${bold}Options:${reset}
-  -u, --username    Username for script
-  -p, --password    User password
-  --force           Skip all user interaction.  Implied 'Yes' to all actions.
-  -q, --quiet       Quiet (no output)
-  -l, --log         Print log to file
-  -s, --strict      Exit script with null variables.  i.e 'set -o nounset'
-  -v, --verbose     Output more information. (Items echoed to 'verbose')
-  -d, --debug       Runs script in BASH debug mode (set -x)
-  -h, --help        Display this help and exit
-      --version     Output version information and exit
+  -c, --configuration          .net application build configuration
+  bv, --buildversion           build application version
+  -oe,--octopusenvironment     octopus environment
+  -oc,--octopuschannel)        octopus channel
+  -op,--octopusproject)        octopus project
+  -r, --releasenotes)          releasenotes
+  -b, --branch)                branch
+  -en,--enablenpm)             enable npm
+  -es,--enablesonar)           enable sonar
+  -ed,--enabledeployment)      enable deployment
+      --force                  Skip all user interaction.  Implied 'Yes' to all actions.
+  -q, --quiet                  Quiet (no output)
+  -l, --log                    Print log to file
+  -s, --strict                 Exit script with null variables.  i.e 'set -o nounset'
+  -v, --verbose                Output more information. (Items echoed to 'verbose')
+  -d, --debug                  Runs script in BASH debug mode (set -x)
+  -h, --help                   Display this help and exit
+      --version                Output version information and exit
 "
 }
 
@@ -195,28 +205,44 @@ while [[ $1 = -?* ]]; do
   case $1 in
     -h|--help) usage >&2; safeExit ;;
     --version) echo "$(basename $0) ${version}"; safeExit ;;
-    -u|--username) shift; username=${1} ;;
-    -p|--password) shift; echo "Enter Pass: "; stty -echo; read PASS; stty echo;
-      echo ;;
+    -c|--configuration) shift; configuration=${1:-Release};;
+    bv|--buildversion) shift; buildversion=${1:-1.0.0} ;;
+    -oe|--octopusenvironment) shift; octopusenvironment=${1:-Recette};;
+    -oc|--octopuschannel) shift; octopuschannel=${1};;
+    -op|--octopusproject) shift; octopusproject=${1};;
+    -r|--releasenotes) shift; releasenotes=${1};;
+    -b|--branch) shift; branch=${1:-master};;
+    -en|--enablenpm) shift; enablenpm=${1:-false};;
+    -es|--enablesonar) shift; enablesonar=${1:-false};;
+    -ed|--enabledeployment) shift; enabledeployment=${1:-false};;
+    #-u|--username) shift; username=${1} ;;
+    #-p|--password) shift; echo "Enter Pass: "; stty -echo; read PASS; stty echo;
+    #  echo ;;
     -v|--verbose) verbose=true ;;
     -l|--log) printLog=true ;;
     -q|--quiet) quiet=true ;;
     -s|--strict) strict=true;;
     -d|--debug) debug=true;;
-    --force) force=true ;;
+    -f|--force) force=true ;;
     --endopts) shift; break ;;
     *) die "invalid option: '$1'." ;;
   esac
   shift
 done
-
 # Store the remaining part as arguments.
 args+=("$@")
 
+
+
 ############## End Options and Usage ###################
 
-
-
+#Init default value
+configuration=${configuration:-Release}
+buildversion=${buildversion:-1.0.0}
+octopusenvironment=${buildversion:-Recette}
+enablenpm=${enablenpm:-false}
+enablesonar=${enablesonar:-false}
+enabledeployment=${enabledeployment:-false}
 
 # ############# ############# #############
 # ##       TIME TO RUN THE SCRIPT        ##
