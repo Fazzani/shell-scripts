@@ -1,4 +1,7 @@
 # My Shell Scripts
+
+[official documentation][doc]
+
 This is the centralized repository of all the shell scripts which I use for a number of different purposes.
 
 **Important:**  *I am a novice programmer and I bear no responsibility whatsoever if any of these scripts that I have written wipes your computer, destroys your data, crashes your car, or otherwise causes mayhem and destruction.  USE AT YOUR OWN RISK.*
@@ -63,3 +66,4 @@ To use the bash boilerplate for your own script follow these steps.
 [6]: http://www.cis.upenn.edu/~bcpierce/unison/
 [7]: http://semver.org
 [8]: http://www.controlplaneapp.com/
+[doc]: https://natelandau.com/boilerplate-shell-script-template/

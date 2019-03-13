@@ -26,7 +26,7 @@ scriptTemplateVersion="1.5.0" # Version of scriptTemplate.sh that this script is
 # ##################################################
 
 # Provide a variable with the location of this script.
-scriptPath="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+scriptPath="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Source Scripting Utilities
 # -----------------------------------
@@ -117,20 +117,44 @@ homebrewDependencies=()
 caskDependencies=()
 gemDependencies=()
 
+# Exectute Teamcity step
+#-------------------------------------
+#
+function ExecuteStep() {
+  local "${@}"
+  echo "##teamcity[compilationStarted compiler='$title']"
+  debug "Executing command => $command $args"
+  set +o errexit
+  (cd "$workingdirectory"; errormessage=$(eval "$command $args 2>&1 | tee /dev/stderr"))
+  rv=$?
+  [[ "$rv" -ne 0 ]] && {
+    echo "##teamcity[message text='"Erreur Lors de la Step :"  $command  $args' status='ERROR']"
+    echo "##teamcity[message text='"$errormessage"' status='ERROR']" 
+    exit $rv
+  }
+
+  echo "##teamcity[compilationFinished compiler='$title']"
+  echo -n
+  set -o errexit
+}
+
 function mainScript() {
-############## Begin Script Here ###################
-####################################################
-debug $buildversion
-debug $configuration
+  ############## Begin Script Here ###################
+  ####################################################
+  debug "buildversion = $buildversion"
+  debug "configuration = $configuration"
+  debug "enablenpm = $enablenpm"
+  debug "workingdirectory = $workingdirectory"
+  echo -n
 
-echo -n
-
-####################################################
-############### End Script Here ####################
+  ####################################################
+  ############### End Script Here ####################
+  [[ "$enablenpm" == "true" ]] && debug "npm enabled!!" && ( ExecuteStep title="Npm run" command="npm run" workingdirectory=$workingdirectory args="build")
+  [[ "$enablenpm" == "true" ]] && debug "Cleaning working directory!!" && ( ExecuteStep title="Npm run" command="npm run" workingdirectory=$workingdirectory args="clean:install")
+  [[ "$enabledeployment" == "true" ]] &&  ( ExecuteStep title="Dotnet Core publish" command="dotnet publish" workingdirectory=$workingdirectory configuration=$configuration args="-o $tmpDir/out")
 }
 
 ############## Begin Options and Usage ###################
-
 
 # Print usage
 usage() {
@@ -139,17 +163,18 @@ usage() {
 This is build script allow the CICD for .net core application on AWS platform.
 
  ${bold}Options:${reset}
-  -c, --configuration          .net application build configuration
-  bv, --buildversion           build application version
-  -oe,--octopusenvironment     octopus environment
-  -oc,--octopuschannel)        octopus channel
-  -op,--octopusproject)        octopus project
-  -r, --releasenotes)          releasenotes
-  -b, --branch)                branch
-  -en,--enablenpm)             enable npm
-  -es,--enablesonar)           enable sonar
-  -ed,--enabledeployment)      enable deployment
-      --force                  Skip all user interaction.  Implied 'Yes' to all actions.
+  -c, --configuration          Configuration build for .net application
+  -w, --workingdirectory       Working directory
+      --buildversion           Build application version
+      --octopusenvironment     Octopus environment
+      --octopuschannel)        Octopus channel
+      --octopusproject)        Octopus project
+  -r, --releasenotes)          Releasenotes
+  -b, --branch)                Branch
+  -n, --enablenpm)             Enable npm
+      --enablesonar)           Enable sonar
+  -p, --enabledeployment)      Enable deployment
+  -f, --force                  Skip all user interaction.  Implied 'Yes' to all actions.
   -q, --quiet                  Quiet (no output)
   -l, --log                    Print log to file
   -s, --strict                 Exit script with null variables.  i.e 'set -o nounset'
@@ -166,30 +191,30 @@ optstring=h
 unset options
 while (($#)); do
   case $1 in
-    # If option is of type -ab
-    -[!-]?*)
-      # Loop over each character starting with the second
-      for ((i=1; i < ${#1}; i++)); do
-        c=${1:i:1}
+  # If option is of type -ab
+  -[!-]?*)
+    # Loop over each character starting with the second
+    for ((i = 1; i < ${#1}; i++)); do
+      c=${1:i:1}
 
-        # Add current char to options
-        options+=("-$c")
+      # Add current char to options
+      options+=("-$c")
 
-        # If option takes a required argument, and it's not the last char make
-        # the rest of the string its argument
-        if [[ $optstring = *"$c:"* && ${1:i+1} ]]; then
-          options+=("${1:i+1}")
-          break
-        fi
-      done
-      ;;
+      # If option takes a required argument, and it's not the last char make
+      # the rest of the string its argument
+      if [[ $optstring == *"$c:"* && ${1:i+1} ]]; then
+        options+=("${1:i+1}")
+        break
+      fi
+    done
+    ;;
 
-    # If option is of type --foo=bar
-    --?*=*) options+=("${1%%=*}" "${1#*=}") ;;
-    # add --endopts for --
-    --) options+=(--endopts) ;;
-    # Otherwise, nothing special
-    *) options+=("$1") ;;
+  # If option is of type --foo=bar
+  --?*=*) options+=("${1%%=*}" "${1#*=}") ;;
+  # add --endopts for --
+  --) options+=(--endopts) ;;
+  # Otherwise, nothing special
+  *) options+=("$1") ;;
   esac
   shift
 done
@@ -201,38 +226,79 @@ unset options
 # [[ $# -eq 0 ]] && set -- "--help"
 
 # Read the options and set stuff
-while [[ $1 = -?* ]]; do
+while [[ $1 == -?* ]]; do
   case $1 in
-    -h|--help) usage >&2; safeExit ;;
-    --version) echo "$(basename $0) ${version}"; safeExit ;;
-    -c|--configuration) shift; configuration=${1:-Release};;
-    bv|--buildversion) shift; buildversion=${1:-1.0.0} ;;
-    -oe|--octopusenvironment) shift; octopusenvironment=${1:-Recette};;
-    -oc|--octopuschannel) shift; octopuschannel=${1};;
-    -op|--octopusproject) shift; octopusproject=${1};;
-    -r|--releasenotes) shift; releasenotes=${1};;
-    -b|--branch) shift; branch=${1:-master};;
-    -en|--enablenpm) shift; enablenpm=${1:-false};;
-    -es|--enablesonar) shift; enablesonar=${1:-false};;
-    -ed|--enabledeployment) shift; enabledeployment=${1:-false};;
-    #-u|--username) shift; username=${1} ;;
-    #-p|--password) shift; echo "Enter Pass: "; stty -echo; read PASS; stty echo;
-    #  echo ;;
-    -v|--verbose) verbose=true ;;
-    -l|--log) printLog=true ;;
-    -q|--quiet) quiet=true ;;
-    -s|--strict) strict=true;;
-    -d|--debug) debug=true;;
-    -f|--force) force=true ;;
-    --endopts) shift; break ;;
-    *) die "invalid option: '$1'." ;;
+  -h | --help)
+    usage >&2
+    safeExit
+    ;;
+  --version)
+    echo "$(basename $0) ${version}"
+    safeExit
+    ;;
+  -c | --configuration)
+    shift
+    configuration=${1:-Release}
+    ;;
+  -w | --workingdirectory)
+    shift
+    workingdirectory=${1}
+    ;;
+  --buildversion)
+    shift
+    buildversion=${1:-1.0.0}
+    ;;
+  --octopusenvironment)
+    shift
+    octopusenvironment=${1:-Recette}
+    ;;
+  --octopuschannel)
+    shift
+    octopuschannel=${1}
+    ;;
+  --octopusproject)
+    shift
+    octopusproject=${1}
+    ;;
+  -r | --releasenotes)
+    shift
+    releasenotes=${1}
+    ;;
+  -b | --branch)
+    shift
+    branch=${1:-master}
+    ;;
+  -n | --enablenpm)
+    shift
+    enablenpm=true
+    ;;
+  --enablesonar)
+    shift
+    enablesonar=true
+    ;;
+  -p | --enabledeployment)
+    shift
+    enabledeployment=true
+    ;;
+  #-u|--username) shift; username=${1} ;;
+  #-p|--password) shift; echo "Enter Pass: "; stty -echo; read PASS; stty echo;
+  #  echo ;;
+  -v | --verbose) verbose=true ;;
+  -l | --log) printLog=true ;;
+  -q | --quiet) quiet=true ;;
+  -s | --strict) strict=true ;;
+  -d | --debug) debug=true ;;
+  -f | --force) force=true ;;
+  --endopts)
+    shift
+    break
+    ;;
+  *) die "invalid option: '$1'." ;;
   esac
   shift
 done
 # Store the remaining part as arguments.
 args+=("$@")
-
-
 
 ############## End Options and Usage ###################
 
@@ -243,6 +309,7 @@ octopusenvironment=${buildversion:-Recette}
 enablenpm=${enablenpm:-false}
 enablesonar=${enablesonar:-false}
 enabledeployment=${enabledeployment:-false}
+workingdirectory=${workingdirectory:-$scriptPath}
 
 # ############# ############# #############
 # ##       TIME TO RUN THE SCRIPT        ##
@@ -262,10 +329,10 @@ IFS=$'\n\t'
 set -o errexit
 
 # Run in debug mode, if set
-if ${debug}; then set -x ; fi
+if ${debug}; then set -x; fi
 
 # Exit on empty variable
-if ${strict}; then set -o nounset ; fi
+if ${strict}; then set -o nounset; fi
 
 # Bash will remember & return the highest exitcode in a chain of pipes.
 # This way you can catch the error in case mysqldump fails in `mysqldump |gzip`, for example.
