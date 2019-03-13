@@ -125,11 +125,14 @@ function ExecuteStep() {
   echo "##teamcity[compilationStarted compiler='$title']"
   debug "Executing command => $command $args"
   set +o errexit
-  (cd "$workingdirectory"; errormessage=$(eval "$command $args 2>&1 | tee /dev/stderr"))
+  (
+    cd "$workingdirectory"
+    errormessage=$(eval "$command $args 2>&1 | tee /dev/stderr")
+  )
   rv=$?
   [[ "$rv" -ne 0 ]] && {
     echo "##teamcity[message text='"Erreur Lors de la Step :"  $command  $args' status='ERROR']"
-    echo "##teamcity[message text='"$errormessage"' status='ERROR']" 
+    echo "##teamcity[message text='"$errormessage"' status='ERROR']"
     exit $rv
   }
 
@@ -137,6 +140,28 @@ function ExecuteStep() {
   echo -n
   set -o errexit
 }
+
+# Deploy .net core application
+#-----------------------------
+#
+function deploy() {
+  local "${@}"
+  # Generate app package
+  ExecuteStep title="Dotnet Core publish" command="dotnet publish" workingdirectory=$workingdirectory configuration=$configuration args="-o $tmpDir/out"
+  # Compress archive
+  # Upload archive to S3
+  # Create AMI
+  # Update paramters.json file with the new Ami id
+  # Package Cloud Formation stack
+  # OctoPush
+  # OctoRelease
+}
+
+# function PackageUpload ($archive, $key) {
+ 
+#     Write-Host Write-S3Object -Region eu-west-1 -BucketName $bucketName -File $archive -Key $key -Verbose
+#     Write-S3Object -Region eu-west-1 -BucketName $bucketName -File $archive -Key $key -Verbose
+# }
 
 function mainScript() {
   ############## Begin Script Here ###################
@@ -149,9 +174,7 @@ function mainScript() {
 
   ####################################################
   ############### End Script Here ####################
-  [[ "$enablenpm" == "true" ]] && debug "npm enabled!!" && ( ExecuteStep title="Npm run" command="npm run" workingdirectory=$workingdirectory args="build")
-  [[ "$enablenpm" == "true" ]] && debug "Cleaning working directory!!" && ( ExecuteStep title="Npm run" command="npm run" workingdirectory=$workingdirectory args="clean:install")
-  [[ "$enabledeployment" == "true" ]] &&  ( ExecuteStep title="Dotnet Core publish" command="dotnet publish" workingdirectory=$workingdirectory configuration=$configuration args="-o $tmpDir/out")
+  [[ "$enabledeployment" == "true" ]] && deploy workingdirectory=$workingdirectory configuration=$configuration 
 }
 
 ############## Begin Options and Usage ###################
